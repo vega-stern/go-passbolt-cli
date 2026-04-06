@@ -2,6 +2,7 @@ package resource
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -63,13 +64,45 @@ func ResourceGet(cmd *cobra.Command, args []string) error {
 	defer util.SaveSessionKeysAndLogout(ctx, client)
 	cmd.SilenceUsage = true
 
-	folderParentID, name, username, uri, password, description, err := helper.GetResource(
-		ctx,
-		client,
-		id,
-	)
+	folderParentID, name, username, uri, password, description, err := helper.GetResource(ctx, client, id)
+	var customFields []CustomFieldJSON
 	if err != nil {
-		return fmt.Errorf("getting Resource: %w", err)
+		if errors.Is(err, helper.ErrUnsupportedResourceType) {
+			res, rerr := client.GetResource(ctx, id)
+			if rerr != nil {
+				return fmt.Errorf("getting Resource: %w", err)
+			}
+			rType, terr := client.GetResourceType(ctx, res.ResourceTypeID)
+			if terr != nil {
+				return fmt.Errorf("getting Resource: %w", err)
+			}
+			if rType.Slug == "v5-custom-fields" {
+				sec, serr := client.GetSecret(ctx, id)
+				if serr != nil {
+					return fmt.Errorf("getting Resource: %w", err)
+				}
+				var fields []util.CustomField
+				var derr error
+				name, _, uri, _, description, fields, derr = util.DecryptCustomFieldsResource(ctx, client, *res, *sec, *rType)
+				if derr != nil {
+					return fmt.Errorf("getting Resource: %w", derr)
+				}
+				folderParentID = res.FolderParentID
+				username = ""
+				password = ""
+				for _, f := range fields {
+					key := f.MetadataKey
+					if key == "" {
+						key = f.SecretKey
+					}
+					customFields = append(customFields, CustomFieldJSON{ID: f.ID, Type: f.Type, Key: key, SecretValue: f.SecretValue})
+				}
+			} else {
+				return fmt.Errorf("getting Resource: %w", err)
+			}
+		} else {
+			return fmt.Errorf("getting Resource: %w", err)
+		}
 	}
 
 	if jsonOutput {
@@ -80,6 +113,7 @@ func ResourceGet(cmd *cobra.Command, args []string) error {
 			URI:            &uri,
 			Password:       &password,
 			Description:    &description,
+			CustomFields:   customFields,
 		}, "", "  ")
 		if err != nil {
 			return err
@@ -92,6 +126,13 @@ func ResourceGet(cmd *cobra.Command, args []string) error {
 		fmt.Printf("URI: %v\n", shellescape.StripUnsafe(uri))
 		fmt.Printf("Password: %v\n", shellescape.StripUnsafe(password))
 		fmt.Printf("Description: %v\n", shellescape.StripUnsafe(description))
+		if len(customFields) > 0 {
+			fmt.Printf("CustomFields:\n")
+			for _, cf := range customFields {
+				b, _ := json.Marshal(cf.SecretValue)
+				fmt.Printf("  - %s (%s): %s\n", shellescape.StripUnsafe(cf.Key), cf.Type, shellescape.StripUnsafe(string(b)))
+			}
+		}
 	}
 	return nil
 }

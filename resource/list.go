@@ -203,6 +203,18 @@ func decryptResourcesParallel(ctx context.Context, client *api.Client, resources
 					*rType,
 					needSecrets,
 				)
+				if err != nil && errors.Is(err, helper.ErrUnsupportedResourceType) && rType.Slug == "v5-custom-fields" {
+					// Best-effort support for v5-custom-fields: decrypt metadata + custom_fields
+					var derr error
+					var fields []util.CustomField
+					name, _, uri, _, desc, fields, derr = util.DecryptCustomFieldsResource(ctx, client, resource, secret, *rType)
+					_ = fields
+					if derr == nil {
+						err = nil
+						username = ""
+						pass = ""
+					}
+				}
 				results <- decryptedResource{
 					index:       idx,
 					resource:    resource,

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -87,7 +88,31 @@ func resolveEnvironmentSecrets(ctx context.Context, client *api.Client) ([]strin
 		resourceID := strings.TrimPrefix(value, PassboltPrefix)
 		_, _, _, _, secret, _, err := helper.GetResource(ctx, client, resourceID)
 		if err != nil {
-			return nil, fmt.Errorf("getting resource: %w", err)
+			if errors.Is(err, helper.ErrUnsupportedResourceType) {
+				res, rerr := client.GetResource(ctx, resourceID)
+				if rerr != nil {
+					return nil, fmt.Errorf("getting resource: %w", err)
+				}
+				rType, terr := client.GetResourceType(ctx, res.ResourceTypeID)
+				if terr != nil {
+					return nil, fmt.Errorf("getting resource: %w", err)
+				}
+				if rType.Slug == "v5-custom-fields" {
+					sec, serr := client.GetSecret(ctx, resourceID)
+					if serr != nil {
+						return nil, fmt.Errorf("getting resource: %w", err)
+					}
+					_, _, _, pw, _, _, derr := util.DecryptCustomFieldsResource(ctx, client, *res, *sec, *rType)
+					if derr != nil {
+						return nil, fmt.Errorf("getting resource: %w", derr)
+					}
+					secret = pw
+				} else {
+					return nil, fmt.Errorf("getting resource: %w", err)
+				}
+			} else {
+				return nil, fmt.Errorf("getting resource: %w", err)
+			}
 		}
 
 		envVars[i] = key + "=" + secret

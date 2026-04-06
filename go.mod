@@ -5,7 +5,7 @@ go 1.24.13
 require (
 	al.essio.dev/pkg/shellescape v1.6.0
 	github.com/google/cel-go v0.27.0
-	github.com/passbolt/go-passbolt v0.8.0-beta.1.0.20260312121958-50fc7ea8f485
+	github.com/passbolt/go-passbolt v0.8.0-beta.1
 	github.com/pterm/pterm v0.12.82
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
@@ -52,5 +52,3 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260209200024-4cfbd4190f57 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 )
-
-// replace github.com/passbolt/go-passbolt => ../go-passbolt
